@@ -22,6 +22,12 @@ venv/
 # Docker
 docker-compose.override.yml
 
+# Helm
+*.tgz
+
+# Generated product images (staged from seed_images at build time)
+microservices/catalog/static/uploads/
+
 # OS
 .DS_Store
 Thumbs.db

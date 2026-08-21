@@ -1,7 +1,12 @@
 """Build and push Docker images for each microservice to ECR.
 
+Creates the ECR repository for each service if it does not already exist, then
+builds and pushes the image.
+
 Usage:
-    python build_and_push.py
+    python build_and_push.py                    # prompts for prefix and tag
+    python build_and_push.py <prefix> <tag>     # non-interactive
+    ECR_REPO_PREFIX=ecomm IMAGE_TAG=v1.1.0 python build_and_push.py
 """
 
 import base64
@@ -34,12 +39,27 @@ def ecr_login(region, registry):
     )
 
 
-def build_and_push(service, registry, repo_prefix, tag):
+def ensure_repository(region, repo):
+    """Create the ECR repository if it is not already there."""
+    ecr = boto3.client("ecr", region_name=region)
+    try:
+        ecr.create_repository(
+            repositoryName=repo,
+            imageScanningConfiguration={"scanOnPush": True},
+        )
+        print(f"Created ECR repository {repo}")
+    except ecr.exceptions.RepositoryAlreadyExistsException:
+        print(f"ECR repository {repo} already exists")
+
+
+def build_and_push(service, region, registry, repo_prefix, tag):
     build_context = os.path.join(SCRIPT_DIR, "microservices", service)
     repo = f"{repo_prefix}-{service}"
     image_tag = f"{registry}/{repo}:{tag}"
 
     print(f"\n--- {service} ---")
+    ensure_repository(region, repo)
+
     print(f"Building {image_tag} ...")
     subprocess.run(
         ["docker", "build", "-t", image_tag, build_context],
@@ -51,16 +71,24 @@ def build_and_push(service, registry, repo_prefix, tag):
     print(f"Done: {image_tag}")
 
 
-def main():
-    repo_prefix = input("Please enter your prefix: ").strip()
-    if not repo_prefix:
-        print("No prefix provided, aborting.")
+def resolve(name, cli_value, env_var, prompt):
+    value = cli_value or os.environ.get(env_var) or input(prompt).strip()
+    if not value:
+        print(f"No {name} provided, aborting.")
         sys.exit(1)
+    return value
 
-    tag = input("Image tag (e.g. v1.0.0): ").strip()
-    if not tag:
-        print("No tag provided, aborting.")
-        sys.exit(1)
+
+def main():
+    args = sys.argv[1:]
+    repo_prefix = resolve(
+        "prefix", args[0] if len(args) > 0 else None,
+        "ECR_REPO_PREFIX", "Please enter your prefix: ",
+    )
+    tag = resolve(
+        "tag", args[1] if len(args) > 1 else None,
+        "IMAGE_TAG", "Image tag (e.g. v1.0.0): ",
+    )
 
     region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 
@@ -73,9 +101,16 @@ def main():
     ecr_login(region, registry)
 
     for service in SERVICES:
-        build_and_push(service, registry, repo_prefix, tag)
+        build_and_push(service, region, registry, repo_prefix, tag)
 
     print("\nAll images pushed successfully.")
+    print("\nDeploy with:")
+    print(
+        f"  helm upgrade --install ecomm helm/ecomm \\\n"
+        f"    --set image.registry={registry} \\\n"
+        f"    --set image.repositoryPrefix={repo_prefix} \\\n"
+        f"    --set image.tag={tag}"
+    )
 
 
 if __name__ == "__main__":

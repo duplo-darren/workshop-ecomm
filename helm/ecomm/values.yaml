@@ -1,0 +1,347 @@
+# Default values for the ecomm chart.
+
+# -- Registry/repository prefix shared by all three service images.
+# Images are named "<registry>/<repositoryPrefix>-<service>:<tag>", matching
+# the naming produced by build_and_push.py, i.e.
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:v1.1.1
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:v1.1.1
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:v1.1.1
+#
+# registry is pinned to the AWS account these images were pushed to. Deploying
+# into a different account means changing registry (and usually tag) — see
+# "Deploying to a new AWS account" in README.md.
+image:
+  registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com
+  repositoryPrefix: ecomm
+  tag: v1.1.1
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# A note on the resources blocks below.
+#
+# The numbers come from measuring this release with `kubectl top pods`, idle and
+# under load (12 concurrent clients hitting the product list, product detail and
+# image-proxy paths), not from guesswork:
+#
+#   pod         idle cpu / mem    loaded cpu / mem
+#   frontend        2m / 54Mi        500m / 59Mi   <- was pinned at a 500m limit
+#   catalog         1m / 112Mi       300m / 112Mi
+#   inventory       1m / 93Mi         97m / 93Mi
+#   postgres       15m / 47Mi         68m / 47Mi
+#
+# Two things fell out of that. Memory is flat — every pod has a small, stable
+# working set, so requests sit just above it and the old 512Mi limits were
+# largely fiction. CPU is the opposite: the frontend sat exactly on its limit
+# under load, meaning it was being throttled and the limit, not the workload, was
+# setting the response time. Requests are set near loaded usage rather than idle
+# so the scheduler reserves what the pod actually needs, and so a CPU-based HPA
+# has a sane baseline to compute utilisation against.
+#
+# Total reserved by a default install: 650m CPU and 704Mi memory, which fits
+# comfortably on one small node alongside a workshop's other pods.
+# ---------------------------------------------------------------------------
+
+# -- Labels/annotations applied to every object in the release.
+commonLabels: {}
+commonAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# PostgreSQL — runs in-cluster as a plain Kubernetes Service.
+# Both services keep their own logical database on this instance
+# (database-per-service), reachable at <release>-postgres:5432.
+# Set enabled=false to point the services at RDS instead (see catalog.aws /
+# inventory.aws below).
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: ecomm
+    password: ecomm
+    # -- Bootstrap database created by the postgres entrypoint.
+    database: ecomm
+    # -- Use an existing secret instead of the values above. It must contain
+    # keys "username" and "password".
+    existingSecret: ""
+  # -- Per-service databases created on first boot via an initdb script.
+  databases:
+    catalog: ecomm_catalog
+    inventory: ecomm_inventory
+  service:
+    type: ClusterIP
+    port: 5432
+  persistence:
+    enabled: true
+    size: 8Gi
+    # -- StorageClass for the database volume. "gp2" is the class shipped with
+    # Amazon EKS. Set this explicitly rather than leaving it empty: an empty
+    # value means "use the cluster's default StorageClass", and a cluster with
+    # no default silently leaves the PVC Pending, which blocks postgres and
+    # every pod waiting on it. Change it for non-EKS clusters
+    # (`kubectl get storageclass`), or set persistence.enabled=false.
+    storageClass: gp2
+    accessMode: ReadWriteOnce
+  # -- Observed at 68m CPU / 47Mi under load with 57 products. The memory
+  # request is well above that on purpose: postgres sizes shared_buffers and
+  # per-connection work_mem from what it is given, and the working set grows with
+  # the data, so this is the one pod where headroom is worth reserving.
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Seeding — runs as Helm post-install/post-upgrade hook Jobs so product and
+# stock data is present on first boot. Both seed scripts are idempotent: they
+# skip inserting if their table already holds rows.
+# Product images ship inside the catalog image and are pre-loaded into
+# catalog/static/uploads at build time, so no shared volume is required.
+# ---------------------------------------------------------------------------
+seed:
+  enabled: true
+  backoffLimit: 6
+  # -- How long a finished seed Job (and so its logs) is kept before the
+  # cluster reaps it. The Job is not deleted on success, so this is the window
+  # in which `kubectl logs job/<release>-seed-catalog` still works.
+  ttlSecondsAfterFinished: 1800
+  # -- Runs for a couple of seconds inserting 57 rows. Sized to schedule easily
+  # rather than to go fast; it holds up `helm install`, so the limits are loose
+  # enough that a busy node cannot starve it.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -- Image used by the wait-for-database init containers.
+waitForDb:
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  timeoutSeconds: 300
+  # -- Tiny, but not omitted: a `pg_isready` loop needs almost nothing, and a
+  # namespace with a ResourceQuota rejects any pod whose init containers have no
+  # requests. These do not add to the pod's reservation either — a pod's
+  # effective request is the larger of its init containers and the sum of its
+  # app containers, and 10m never wins that comparison.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# Services. All three run a single replica by default — enough for a workshop
+# or demo, and it keeps the footprint small. Raise replicaCount (or enable
+# autoscaling) on frontend and inventory freely; both are stateless. Read the
+# note on catalog.replicaCount before scaling that one.
+# ---------------------------------------------------------------------------
+frontend:
+  enabled: true
+  replicaCount: 1
+  # -- Overrides image.repositoryPrefix-based naming for this service.
+  image:
+    repository: ""
+    tag: ""
+  containerPort: 8000
+  service:
+    # -- LoadBalancer, with the annotations below, asks the AWS Load Balancer
+    # Controller for an internet-facing NLB in front of the frontend pods.
+    # Alternatives: ClusterIP + ingress.enabled=true for an ALB, or plain
+    # ClusterIP for port-forward-only access.
+    type: LoadBalancer
+    port: 80
+    nodePort: ""
+    # -- CIDRs allowed to reach the load balancer, e.g. ["203.0.113.0/24"].
+    # Empty means open to the internet.
+    loadBalancerSourceRanges: []
+    # -- AWS Load Balancer Controller settings. "type: external" is the
+    # annotation that hands the Service to the controller — without it the
+    # in-tree legacy provider answers instead and builds a classic ELB.
+    # "nlb-target-type: ip" registers pod IPs directly rather than node ports.
+    # Remove this whole block on a non-AWS cluster.
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      # -- Cross-zone is off by default on an NLB, which means a load balancer
+      # node only reaches targets in its own availability zone. With a single
+      # frontend replica every other zone has no target, so connections
+      # through those zones hang. Enabling it costs cross-AZ data transfer and
+      # buys reachability that does not depend on where the pod is scheduled.
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+      # -- Health-check the app rather than just the TCP port, so a pod that is
+      # listening but broken is taken out of rotation.
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: HTTP
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /health
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: traffic-port
+  # -- The busiest pod: it renders every page and proxies every product image, so
+  # it burns roughly as much CPU as catalog and inventory combined. It saturated a
+  # 500m limit under load, so the ceiling is now a full core — raise
+  # replicaCount or enable autoscaling before raising it further.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  podAnnotations: {}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+catalog:
+  enabled: true
+  # -- Kept at 1 by default: the seed images are baked into the image (so they
+  # work at any replica count), but images uploaded at runtime land on a single
+  # pod's filesystem. Enable aws.objectStorage below before scaling out.
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+  containerPort: 8001
+  service:
+    type: ClusterIP
+    port: 8001
+    annotations: {}
+  # -- Full connection string. Leave empty to build it from the in-cluster
+  # postgres values above.
+  databaseUrl: ""
+  # -- Read DATABASE_URL from an existing secret instead.
+  existingSecret: ""
+  existingSecretKey: DATABASE_URL
+  # -- AWS mode (used when postgres.enabled=false and no databaseUrl is set):
+  # the service resolves credentials from Secrets Manager itself.
+  aws:
+    dbSecretName: ""
+    dbName: ""
+    region: ""
+    # -- S3-backed product images. Leave disabled for the in-cluster setup;
+    # seed images are served from the pod filesystem.
+    objectStorage:
+      enabled: false
+      bucket: ""
+  # -- Observed at 300m CPU / 112Mi under load. The memory limit stays generous
+  # relative to that working set because product-image uploads are buffered
+  # in the worker before they are written out, so a large POST to /api/products
+  # is a transient spike this pod has to absorb without being OOM-killed.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 192Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Only scale the catalog out with aws.objectStorage.enabled=true.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  serviceAccount:
+    create: true
+    name: ""
+    # -- e.g. eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/catalog
+    annotations: {}
+  podAnnotations: {}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+inventory:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+  containerPort: 8002
+  service:
+    type: ClusterIP
+    port: 8002
+    annotations: {}
+  databaseUrl: ""
+  existingSecret: ""
+  existingSecretKey: DATABASE_URL
+  aws:
+    dbSecretName: ""
+    dbName: ""
+    region: ""
+  # -- The lightest of the three: one small table, JSON responses, no file
+  # handling. It peaked at 97m CPU / 93Mi under the same load that saturated the
+  # frontend, so it gets the smallest share.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  podAnnotations: {}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -- Ingress for the frontend only; catalog and inventory stay internal.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  path: /
+  pathType: Prefix
+  tls: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL

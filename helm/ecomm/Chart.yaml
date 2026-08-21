@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ecomm
+description: AnyCompany e-commerce microservices (frontend, catalog, inventory) with an in-cluster PostgreSQL database and first-boot product seeding
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - ecommerce
+  - microservices
+  - flask
+  - postgresql
+home: https://github.com/duplo-darren/workshop-ecomm
+maintainers:
+  - name: AnyCompany Platform Team

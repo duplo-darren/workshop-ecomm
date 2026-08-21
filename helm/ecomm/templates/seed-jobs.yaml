@@ -1,0 +1,77 @@
+{{- if .Values.seed.enabled }}
+{{- $seedTargets := list }}
+{{- if .Values.catalog.enabled }}
+{{- $seedTargets = append $seedTargets (dict "component" "catalog" "svcValues" .Values.catalog "database" .Values.postgres.databases.catalog "weight" "0") }}
+{{- end }}
+{{- if .Values.inventory.enabled }}
+{{- $seedTargets = append $seedTargets (dict "component" "inventory" "svcValues" .Values.inventory "database" .Values.postgres.databases.inventory "weight" "1") }}
+{{- end }}
+{{- range $target := $seedTargets }}
+{{- $component := $target.component }}
+{{- $svc := $target.svcValues }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ecomm.fullname" $ }}-seed-{{ $component }}
+  labels:
+    {{- include "ecomm.componentLabels" (dict "ctx" $ "component" (printf "seed-%s" $component)) | nindent 4 }}
+  annotations:
+    {{- with $.Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    # Runs on install and upgrade so a freshly created database is always
+    # populated before the release is reported as deployed. Both seed scripts
+    # are no-ops when their table already holds rows.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": {{ $target.weight | quote }}
+    {{- /* Deliberately no hook-succeeded: a Job deleted the instant it
+           succeeds takes its logs with it, so there is no way to confirm what
+           was seeded. The Job is instead kept until the next hook run, and
+           seed.ttlSecondsAfterFinished cleans it up in the meantime (which also
+           collects it if the release is uninstalled while it is running). */}}
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ $.Values.seed.backoffLimit }}
+  {{- with $.Values.seed.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "ecomm.componentLabels" (dict "ctx" $ "component" (printf "seed-%s" $component)) | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ecomm.serviceAccountName" (dict "ctx" $ "component" $component "svcValues" $svc) }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- if $.Values.postgres.enabled }}
+      initContainers:
+        {{- include "ecomm.waitForDb" $ | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seed
+          image: {{ include "ecomm.image" (dict "ctx" $ "service" $component "svcValues" $svc) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          command: ["python", "-m", "{{ $component }}.seed"]
+          env:
+            {{- include "ecomm.dbEnv" (dict "ctx" $ "component" $component "svcValues" $svc "database" $target.database) | trim | nindent 12 }}
+            {{- if and (eq $component "catalog") $.Values.catalog.aws.objectStorage.enabled }}
+            - name: USE_OBJECT_STORAGE
+              value: "true"
+            - name: OBJECT_STORE_LOCATION
+              value: {{ $.Values.catalog.aws.objectStorage.bucket | quote }}
+            {{- end }}
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml $.Values.seed.resources | nindent 12 }}
+---
+{{- end }}
+{{- end }}

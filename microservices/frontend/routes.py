@@ -1,9 +1,26 @@
-from flask import render_template, redirect, request, Blueprint
+from flask import render_template, redirect, request, Blueprint, Response
 from .service_client import ServiceClient
 
 frontend_bp = Blueprint(
     "frontend", __name__, template_folder="templates"
 )
+
+
+@frontend_bp.route("/static/uploads/<path:filename>")
+def product_image(filename):
+    """Proxy product images from the Catalog service.
+
+    When the Catalog service uses local storage it returns relative image URLs
+    (``/static/uploads/<file>``), which the browser resolves against this
+    service. Streaming them from Catalog keeps the frontend the single public
+    entry point. With S3 storage the URLs are absolute and this never fires.
+    """
+    upstream = ServiceClient.stream("catalog", f"/static/uploads/{filename}")
+    return Response(
+        upstream.iter_content(chunk_size=8192),
+        content_type=upstream.headers.get("Content-Type", "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @frontend_bp.route("/")

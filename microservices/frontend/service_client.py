@@ -26,6 +26,14 @@ class ServiceClient:
         resp.raise_for_status()
         return resp.json()
 
+    @staticmethod
+    def stream(service, path, **kwargs):
+        """Fetch a non-JSON resource (e.g. an image) and return the response."""
+        url = _get_service_url(service)
+        resp = requests.get(f"{url}{path}", stream=True, **kwargs)
+        resp.raise_for_status()
+        return resp
+
 
 def _get_service_url(service):
     if service == "catalog":

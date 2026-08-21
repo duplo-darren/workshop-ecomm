@@ -207,12 +207,14 @@ metadata:
 
 ## Database Initialization
 
-The service automatically creates tables on startup using SQLAlchemy:
-```python
-db.create_all()  # Creates products table if not exists
-```
+The service creates any missing tables on startup, in `create_schema()` in
+`app.py`. Creation is guarded by a PostgreSQL transaction-scoped advisory lock
+(`pg_advisory_xact_lock`) so that concurrent Gunicorn workers, replicas and the
+seed Job cannot race each other into a duplicate-`CREATE TABLE` error against an
+empty database.
 
-For migrations from existing data, use a Kubernetes Job or external migration script.
+For loading existing data, use a Kubernetes Job — the Helm chart runs
+`python -m catalog.seed` as a post-install hook Job.
 
 ## Dependencies
 

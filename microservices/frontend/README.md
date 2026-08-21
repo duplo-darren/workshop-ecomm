@@ -1,24 +1,4 @@
-# Inventory Microservice
-
-## Purpose
-
-The Inventory microservice manages stock levels and warehouse information for products in the e-commerce application. It provides a RESTful API for tracking product quantities across warehouses.
-
-## Responsibilities
-
-- Product inventory management (stock quantities)
-- Warehouse location tracking
-- Inventory updates and queries by product ID
-- Database schema management for inventory table
-
-## Architecture
-
-- **Framework**: Flask (Python web framework)
-- **Database**: PostgreSQL
-- **ORM**: SQLAlchemy
-- **Dependencies**: None (standalone service)
-
-## Database Schema# Frontend Microservice
+# Frontend Microservice
 
 ## Purpose
 
@@ -97,6 +77,16 @@ This service implements the **API Gateway / Backend for Frontend (BFF)** pattern
   - `quantity` (required)
   - `warehouse` (optional)
 - **Redirect**: Back to product detail page
+
+### Product Images
+- **Path**: `/static/uploads/<filename>`
+- **Method**: GET
+- **Purpose**: Stream product images from the Catalog service so the frontend
+  stays the single public entry point
+- **Target**: Catalog service (`GET /static/uploads/<filename>`)
+- **Note**: Only used when Catalog runs in local-storage mode, which returns
+  relative image URLs. With `USE_OBJECT_STORAGE=true` the Catalog service
+  returns absolute S3 URLs and the browser fetches them directly.
 
 ### Health Check
 - **Method**: GET

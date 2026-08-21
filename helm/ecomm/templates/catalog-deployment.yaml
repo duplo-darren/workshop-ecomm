@@ -1,0 +1,89 @@
+{{- if .Values.catalog.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecomm.fullname" . }}-catalog
+  labels:
+    {{- include "ecomm.componentLabels" (dict "ctx" $ "component" "catalog") | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.catalog.autoscaling.enabled }}
+  replicas: {{ .Values.catalog.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ecomm.selectorLabels" (dict "ctx" $ "component" "catalog") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ecomm.componentLabels" (dict "ctx" $ "component" "catalog") | nindent 8 }}
+      {{- with .Values.catalog.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ecomm.serviceAccountName" (dict "ctx" $ "component" "catalog" "svcValues" .Values.catalog) }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgres.enabled }}
+      initContainers:
+        {{- include "ecomm.waitForDb" . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: catalog
+          image: {{ include "ecomm.image" (dict "ctx" $ "service" "catalog" "svcValues" .Values.catalog) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.catalog.containerPort }}
+          env:
+            {{- include "ecomm.dbEnv" (dict "ctx" $ "component" "catalog" "svcValues" .Values.catalog "database" .Values.postgres.databases.catalog) | trim | nindent 12 }}
+            {{- if .Values.catalog.aws.objectStorage.enabled }}
+            - name: USE_OBJECT_STORAGE
+              value: "true"
+            - name: OBJECT_STORE_LOCATION
+              value: {{ .Values.catalog.aws.objectStorage.bucket | quote }}
+            {{- end }}
+            {{- with .Values.catalog.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.catalog.resources | nindent 12 }}
+      {{- with .Values.catalog.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.catalog.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.catalog.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

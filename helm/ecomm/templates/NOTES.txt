@@ -1,0 +1,38 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Services:
+  frontend   {{ include "ecomm.fullname" . }}-frontend:{{ .Values.frontend.service.port }}   ({{ .Values.frontend.service.type }})
+  catalog    {{ include "ecomm.fullname" . }}-catalog:{{ .Values.catalog.service.port }}    (internal)
+  inventory  {{ include "ecomm.fullname" . }}-inventory:{{ .Values.inventory.service.port }}  (internal)
+{{- if .Values.postgres.enabled }}
+  postgres   {{ include "ecomm.postgres.fullname" . }}:{{ .Values.postgres.service.port }}
+             databases: {{ .Values.postgres.databases.catalog }} (catalog), {{ .Values.postgres.databases.inventory }} (inventory)
+{{- else }}
+  postgres   disabled — services use the database configured via databaseUrl / existingSecret / AWS Secrets Manager
+{{- end }}
+
+{{ if .Values.seed.enabled -}}
+Seed data was applied by the post-install hook jobs. Verify with:
+
+  kubectl logs -n {{ .Release.Namespace }} job/{{ include "ecomm.fullname" . }}-seed-catalog
+  kubectl logs -n {{ .Release.Namespace }} job/{{ include "ecomm.fullname" . }}-seed-inventory
+{{- else -}}
+Seeding is disabled (seed.enabled=false); the catalog will start empty.
+{{- end }}
+
+Reach the shop:
+{{- if .Values.ingress.enabled }}
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host | default "<ingress-address>" }}{{ .Values.ingress.path }}
+{{- else if eq .Values.frontend.service.type "LoadBalancer" }}
+  kubectl get svc -n {{ .Release.Namespace }} {{ include "ecomm.fullname" . }}-frontend -w
+
+  EXTERNAL-IP stays <pending> for a minute or two while the load balancer is
+  provisioned, and the DNS name takes a little longer to resolve. Then open:
+    http://<EXTERNAL-IP>{{ if ne (int .Values.frontend.service.port) 80 }}:{{ .Values.frontend.service.port }}{{ end }}
+{{- else if eq .Values.frontend.service.type "NodePort" }}
+  kubectl get svc -n {{ .Release.Namespace }} {{ include "ecomm.fullname" . }}-frontend
+  # then open http://<node-ip>:<node-port>
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ecomm.fullname" . }}-frontend 8080:{{ .Values.frontend.service.port }}
+  # then open http://localhost:8080
+{{- end }}

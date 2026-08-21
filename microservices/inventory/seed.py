@@ -1,5 +1,5 @@
 """Seed the inventory database with sample stock levels."""
-from .app import create_app
+from .app import create_app, create_schema
 from .models import db, Inventory
 
 STOCK = [
@@ -75,7 +75,7 @@ app = create_app()
 
 def seed():
     with app.app_context():
-        db.create_all()
+        create_schema()
         if Inventory.query.first():
             print("Inventory already has data. Skipping seed.")
             return
