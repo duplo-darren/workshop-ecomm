@@ -1,15 +1,36 @@
 <!DOCTYPE html>
-<html lang="en">
+{# data-bs-theme is Bootstrap 5.3's own theming hook. Setting it to "dark" here
+   re-derives every component's colours from the dark palette, so cards, forms,
+   inputs, list groups, borders and dividers all follow without a single
+   per-element override. Swap it to "light" to go back. #}
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Ecomm Shop{% endblock %}</title>
+    <style>
+        /* Bootstrap is loaded from a CDN, so a cluster without egress renders
+           these pages unstyled — which would mean a stark white page rather than
+           a dark one. These rules mirror Bootstrap's own dark palette so the shop
+           stays dark either way, and color-scheme asks the browser to darken the
+           scrollbars and native form controls to match.
+
+           Declared before the stylesheet on purpose: `body` here and Bootstrap's
+           `body` rule have equal specificity, so whichever comes last wins. This
+           way Bootstrap takes over whenever it loads and this is only a
+           fallback. */
+        :root { color-scheme: dark; }
+        body { background-color: #212529; color: #adb5bd; }
+    </style>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    {# bg-body-tertiary rather than bg-dark: against a dark body, bg-dark is the
+       same colour as the page and the bar disappears. The tertiary surface sits
+       one step lighter, and the border gives it an edge. #}
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom mb-4">
         <div class="container">
-            <a class="navbar-brand" href="/">Ecomm Shop</a>
+            <a class="navbar-brand fw-semibold" href="/">Ecomm Shop</a>
             <div class="navbar-nav">
                 <a class="nav-link" href="/">Products</a>
                 <a class="nav-link" href="/admin">Admin</a>

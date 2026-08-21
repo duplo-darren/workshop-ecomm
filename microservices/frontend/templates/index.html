@@ -9,8 +9,8 @@
             {% if product.image_url %}
             <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
             {% else %}
-            <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
-                <span class="text-white">No Image</span>
+            <div class="card-img-top bg-body-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
+                <span class="text-body-secondary">No Image</span>
             </div>
             {% endif %}
             <div class="card-body">
