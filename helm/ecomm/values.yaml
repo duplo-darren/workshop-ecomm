@@ -3,17 +3,24 @@
 # -- Registry/repository prefix shared by all three service images.
 # Images are named "<registry>/<repositoryPrefix>-<service>:<tag>", matching
 # the naming produced by build_and_push.py, i.e.
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:v1.1.1
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:v1.1.1
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:v1.1.1
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:dark
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:dark
+#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:dark
 #
 # registry is pinned to the AWS account these images were pushed to. Deploying
 # into a different account means changing registry (and usually tag) — see
 # "Deploying to a new AWS account" in README.md.
+#
+# "dark" is a moving tag, not a version. Combined with pullPolicy IfNotPresent
+# that is a trap: a node that has already cached this tag will keep serving the
+# old layers after the tag is re-pushed, so a rebuild appears to do nothing. If
+# you push over "dark", either set pullPolicy: Always or restart the rollout
+# (`kubectl rollout restart deployment -l app.kubernetes.io/part-of=ecomm`).
+# Immutable version tags avoid the whole problem.
 image:
   registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com
   repositoryPrefix: ecomm
-  tag: v1.1.1
+  tag: dark
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

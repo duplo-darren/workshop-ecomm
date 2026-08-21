@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 import boto3
+from botocore.exceptions import ClientError
 
 SERVICES = ["catalog", "inventory", "frontend"]
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,8 +41,27 @@ def ecr_login(region, registry):
 
 
 def ensure_repository(region, repo):
-    """Create the ECR repository if it is not already there."""
+    """Make sure the ECR repository exists, creating it only if it is missing.
+
+    Describe before create, rather than create-and-catch. Pushing to a repository
+    that already exists needs only ECR write access, which a least-privilege
+    workshop role usually has without ecr:CreateRepository. Calling
+    create_repository first fails such a role with AccessDenied even though there
+    is nothing to create.
+    """
     ecr = boto3.client("ecr", region_name=region)
+    try:
+        ecr.describe_repositories(repositoryNames=[repo])
+    except ecr.exceptions.RepositoryNotFoundException:
+        pass
+    except ClientError:
+        # Not allowed to look. Assume it is there and let the push say otherwise.
+        print(f"Could not confirm ECR repository {repo}; attempting the push anyway")
+        return
+    else:
+        print(f"ECR repository {repo} already exists")
+        return
+
     try:
         ecr.create_repository(
             repositoryName=repo,
@@ -50,6 +70,14 @@ def ensure_repository(region, repo):
         print(f"Created ECR repository {repo}")
     except ecr.exceptions.RepositoryAlreadyExistsException:
         print(f"ECR repository {repo} already exists")
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "AccessDeniedException":
+            sys.exit(
+                f"ECR repository {repo} does not exist, and this identity is not "
+                f"allowed to create it. Either grant ecr:CreateRepository, or have "
+                f"the repository created and re-run."
+            )
+        raise
 
 
 def build_and_push(service, region, registry, repo_prefix, tag):

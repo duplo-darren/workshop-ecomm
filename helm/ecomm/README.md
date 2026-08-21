@@ -45,9 +45,9 @@ The three images live in **Amazon ECR in account `803817915563`, region
 
 | Service | Image |
 |---|---|
-| catalog | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:v1.1.1` |
-| inventory | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:v1.1.1` |
-| frontend | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:v1.1.1` |
+| catalog | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:dark` |
+| inventory | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:dark` |
+| frontend | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:dark` |
 
 References are assembled from three values as
 `<image.registry>/<image.repositoryPrefix>-<service>:<image.tag>`:
@@ -56,7 +56,7 @@ References are assembled from three values as
 image:
   registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com   # AWS account + region
   repositoryPrefix: ecomm                                  # repos are <prefix>-<service>
-  tag: v1.1.1
+  tag: dark
 ```
 
 This matches the repository naming produced by `build_and_push.py`. Override one
@@ -353,7 +353,7 @@ helm upgrade ecomm helm/ecomm -n <ns> --reuse-values \
 
 | Key | Default | Description |
 |---|---|---|
-| `image.registry` / `image.repositoryPrefix` / `image.tag` | `803817915563.dkr.ecr.us-east-1.amazonaws.com` / `ecomm` / `v1.1.1` | Image naming for all three services — change `registry` for a new AWS account |
+| `image.registry` / `image.repositoryPrefix` / `image.tag` | `803817915563.dkr.ecr.us-east-1.amazonaws.com` / `ecomm` / `dark` | Image naming for all three services — change `registry` for a new AWS account |
 | `frontend.replicaCount` / `catalog.replicaCount` / `inventory.replicaCount` | `1` / `1` / `1` | Replicas. frontend and inventory are stateless and scale freely; see [Product images](#product-images) before scaling catalog |
 | `frontend.service.type` | `LoadBalancer` | NLB via the AWS Load Balancer Controller; see [Exposing the frontend](#exposing-the-frontend) |
 | `frontend.service.annotations` | AWS LB Controller NLB annotations | Required for the controller to claim the Service; clear on non-AWS clusters |

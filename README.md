@@ -121,9 +121,9 @@ The images referenced by the chart live in **Amazon ECR in account
 
 | Service | Image |
 |---|---|
-| Catalog | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:v1.1.1` |
-| Inventory | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:v1.1.1` |
-| Frontend | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:v1.1.1` |
+| Catalog | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:dark` |
+| Inventory | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:dark` |
+| Frontend | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:dark` |
 
 These come from three values in `helm/ecomm/values.yaml`, assembled as
 `<image.registry>/<image.repositoryPrefix>-<service>:<image.tag>`:
@@ -132,7 +132,7 @@ These come from three values in `helm/ecomm/values.yaml`, assembled as
 image:
   registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com   # account + region
   repositoryPrefix: ecomm                                  # repos are <prefix>-<service>
-  tag: v1.1.1
+  tag: dark
 ```
 
 ### Building and Pushing Images
