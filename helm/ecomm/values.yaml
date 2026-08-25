@@ -85,7 +85,7 @@ postgres:
     type: ClusterIP
     port: 5432
   persistence:
-    enabled: true
+    enabled: false
     size: 8Gi
     # -- StorageClass for the database volume. "gp2" is the class shipped with
     # Amazon EKS. Set this explicitly rather than leaving it empty: an empty
