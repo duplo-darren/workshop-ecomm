@@ -115,8 +115,11 @@ seed:
   backoffLimit: 6
   # -- How long a finished seed Job (and so its logs) is kept before the
   # cluster reaps it. The Job is not deleted on success, so this is the window
-  # in which `kubectl logs job/<release>-seed-catalog` still works.
-  ttlSecondsAfterFinished: 1800
+  # in which `kubectl logs job/<release>-seed-catalog` still works. This also
+  # bounds how long a finished seed Job lingers after `helm uninstall`, since
+  # uninstall doesn't touch hook resources and instead leaves them for this
+  # TTL to reap.
+  ttlSecondsAfterFinished: 60
   # -- Runs for a couple of seconds inserting 57 rows. Sized to schedule easily
   # rather than to go fast; it holds up `helm install`, so the limits are loose
   # enough that a busy node cannot starve it.
