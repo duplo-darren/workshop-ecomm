@@ -117,20 +117,20 @@ actually come up — a `Pending` database PVC stalling the whole install, an
 ## Container Images
 
 The images referenced by the chart live in **Amazon ECR in account
-`803817915563`, region `us-east-1`**:
+`935193504458`, region `us-west-2`**:
 
 | Service | Image |
 |---|---|
-| Catalog | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:dark` |
-| Inventory | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:dark` |
-| Frontend | `803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:dark` |
+| Catalog | `935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-catalog:dark` |
+| Inventory | `935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-inventory:dark` |
+| Frontend | `935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-frontend:dark` |
 
 These come from three values in `helm/ecomm/values.yaml`, assembled as
 `<image.registry>/<image.repositoryPrefix>-<service>:<image.tag>`:
 
 ```yaml
 image:
-  registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com   # account + region
+  registry: 935193504458.dkr.ecr.us-west-2.amazonaws.com   # account + region
   repositoryPrefix: ecomm                                  # repos are <prefix>-<service>
   tag: dark
 ```

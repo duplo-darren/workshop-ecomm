@@ -3,9 +3,9 @@
 # -- Registry/repository prefix shared by all three service images.
 # Images are named "<registry>/<repositoryPrefix>-<service>:<tag>", matching
 # the naming produced by build_and_push.py, i.e.
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-catalog:dark
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-inventory:dark
-#   803817915563.dkr.ecr.us-east-1.amazonaws.com/ecomm-frontend:dark
+#   935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-catalog:dark
+#   935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-inventory:dark
+#   935193504458.dkr.ecr.us-west-2.amazonaws.com/ecomm-frontend:dark
 #
 # registry is pinned to the AWS account these images were pushed to. Deploying
 # into a different account means changing registry (and usually tag) — see
@@ -18,7 +18,7 @@
 # (`kubectl rollout restart deployment -l app.kubernetes.io/part-of=ecomm`).
 # Immutable version tags avoid the whole problem.
 image:
-  registry: 803817915563.dkr.ecr.us-east-1.amazonaws.com
+  registry: 935193504458.dkr.ecr.us-west-2.amazonaws.com
   repositoryPrefix: ecomm
   tag: dark
   pullPolicy: IfNotPresent
