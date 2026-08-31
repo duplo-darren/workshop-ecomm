@@ -14,7 +14,11 @@ image:
   registry: 935193504458.dkr.ecr.us-west-2.amazonaws.com
   repositoryPrefix: ecomm
   tag: v1.1.1
-  pullPolicy: IfNotPresent
+  # -- Always re-pull on every pod start/restart, rather than trusting a
+  # locally cached image. Costs a registry hit per pod, but guarantees nodes
+  # can't run a stale image after a tag is overwritten (e.g. re-pushing the
+  # same tag during a workshop) instead of a new version.
+  pullPolicy: Always
 
 imagePullSecrets: []
 nameOverride: ""
