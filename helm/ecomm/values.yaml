@@ -21,7 +21,7 @@ image:
   registry: 935193504458.dkr.ecr.us-west-2.amazonaws.com
   repositoryPrefix: ecomm
   tag: dark
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 imagePullSecrets: []
 nameOverride: ""
