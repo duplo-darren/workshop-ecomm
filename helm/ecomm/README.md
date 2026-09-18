@@ -194,7 +194,7 @@ The other two options:
 
 | Want | Values |
 |---|---|
-| ALB with path routing, TLS, WAF | `frontend.service.type=ClusterIP`, `ingress.enabled=true`, `ingress.className=alb`, ALB annotations under `ingress.annotations` |
+| ALB with path routing, TLS, WAF | See [ALB via Ingress](#alb-via-ingress) below — `-f values-alb.yaml` covers it |
 | No external address at all | `frontend.service.type=ClusterIP`, then `kubectl port-forward svc/ecomm-frontend 8080:80` |
 
 For HTTPS on the NLB, add an ACM certificate and terminate TLS at the load
@@ -210,6 +210,77 @@ The controller also needs its usual prerequisites: public subnets tagged
 internal), and an IRSA role on the controller's own service account. Neither is
 something this chart can set — see
 [Troubleshooting](#troubleshooting) if `EXTERNAL-IP` never appears.
+
+### ALB via Ingress
+
+The same controller also builds ALBs, driven by an Ingress instead of a Service.
+Use `values-alb.yaml`, which sets everything below:
+
+```bash
+helm upgrade --install ecomm helm/ecomm \
+  --namespace <ns> --create-namespace \
+  -f helm/ecomm/values-alb.yaml
+```
+
+**`ingress.enabled=true` on its own is not the switch.** It adds an Ingress but
+leaves `frontend.service.type` at `LoadBalancer`, so you end up paying for an ALB
+*and* an NLB — and the NLB keeps a public address of its own that bypasses the
+Ingress, along with whatever the Ingress annotations were meant to enforce. The
+Service has to move to `ClusterIP` in the same command. Once it does, the
+`aws-load-balancer-*` annotations drop out of the rendered Service on their own;
+they are conditioned on the service type.
+
+```yaml
+frontend:
+  service:
+    type: ClusterIP        # required — without it you get both load balancers
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+```
+
+Three of those are doing real work:
+
+- **`className: alb`** — `ingress.className` defaults to `""`, and the template
+  omits `ingressClassName` entirely when it is empty. The Ingress then depends on
+  a cluster-default IngressClass existing; most EKS clusters have none, and the
+  Ingress sits with no `ADDRESS` and no events explaining it.
+- **`target-type: ip`** — what pairs with a `ClusterIP` Service. The `instance`
+  target type needs a `NodePort` Service, which you no longer have.
+- **`healthcheck-path: /health`** — otherwise the ALB health-checks `/`, which
+  renders the whole product grid and calls the catalog service on every check.
+
+**Access control moves with the load balancer.**
+`frontend.service.loadBalancerSourceRanges` has no effect on a `ClusterIP`
+Service, so it silently stops restricting anything. The ALB equivalent is an
+annotation:
+
+```yaml
+alb.ingress.kubernetes.io/inbound-cidrs: 203.0.113.0/24
+```
+
+Worth setting: `/admin` and the stock-update form need no credentials, so an
+open ALB lets anyone who finds the address add products and rewrite stock.
+
+Verify before installing — the Service should be `ClusterIP` with no
+`aws-load-balancer-*` annotations left on it:
+
+```bash
+helm template ecomm helm/ecomm -f helm/ecomm/values-alb.yaml \
+  | grep -A5 'kind: Ingress'
+helm template ecomm helm/ecomm -f helm/ecomm/values-alb.yaml \
+  | grep -c aws-load-balancer          # expect 0
+```
+
+For ingress-nginx instead, the required changes are the same two —
+`frontend.service.type=ClusterIP` and `ingress.className=nginx` — and the ALB
+annotations can be dropped entirely.
 
 ## How first-boot seeding works
 
@@ -358,7 +429,7 @@ helm upgrade ecomm helm/ecomm -n <ns> --reuse-values \
 | `frontend.service.type` | `LoadBalancer` | NLB via the AWS Load Balancer Controller; see [Exposing the frontend](#exposing-the-frontend) |
 | `frontend.service.annotations` | AWS LB Controller NLB annotations | Required for the controller to claim the Service; clear on non-AWS clusters |
 | `frontend.service.loadBalancerSourceRanges` | `[]` | CIDRs allowed to reach the LB; empty is open to the internet |
-| `ingress.enabled` / `ingress.host` / `ingress.className` | `false` / `""` / `""` | Ingress for the frontend only |
+| `ingress.enabled` / `ingress.host` / `ingress.className` | `false` / `""` / `""` | Ingress for the frontend only. Set `frontend.service.type=ClusterIP` alongside it, or you get an ALB *and* the default NLB — see [ALB via Ingress](#alb-via-ingress) |
 | `postgres.enabled` | `true` | In-cluster database |
 | `postgres.auth.username` / `password` | `ecomm` / `ecomm` | Change for anything but a workshop; or use `postgres.auth.existingSecret` |
 | `postgres.databases.catalog` / `.inventory` | `ecomm_catalog` / `ecomm_inventory` | Per-service database names |
