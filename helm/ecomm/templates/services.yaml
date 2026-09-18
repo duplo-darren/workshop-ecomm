@@ -5,13 +5,15 @@ metadata:
   name: {{ include "ecomm.fullname" . }}-frontend
   labels:
     {{- include "ecomm.componentLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
-  {{- if or .Values.commonAnnotations .Values.frontend.service.annotations }}
+  {{- if or .Values.commonAnnotations (and (eq .Values.frontend.service.type "LoadBalancer") .Values.frontend.service.annotations) }}
   annotations:
     {{- with .Values.commonAnnotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    {{- if eq .Values.frontend.service.type "LoadBalancer" }}
     {{- with .Values.frontend.service.annotations }}
     {{- toYaml . | nindent 4 }}
+    {{- end }}
     {{- end }}
   {{- end }}
 spec:

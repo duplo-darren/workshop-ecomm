@@ -1,0 +1,44 @@
+# Overlay: put the shop behind an ALB managed by the AWS Load Balancer
+# Controller, instead of the NLB the chart provisions by default.
+#
+#   helm upgrade --install ecomm helm/ecomm \
+#     --namespace <namespace> --create-namespace \
+#     -f helm/ecomm/values-alb.yaml
+#
+# Requires the AWS Load Balancer Controller to already be running in the
+# cluster. The chart creates an Ingress object; it does not install the
+# controller or create the IngressClass. Without the controller the Ingress is
+# simply never reconciled — no ADDRESS, and `kubectl describe ingress ecomm`
+# shows no events at all, which reads like nothing happened rather than an
+# error.
+
+frontend:
+  service:
+    # Not optional. Left as LoadBalancer this overlay gives you an ALB *and*
+    # the default NLB, and the NLB's public address bypasses the Ingress.
+    # Switching to ClusterIP also drops the NLB annotations, which are
+    # conditioned on the service type.
+    type: ClusterIP
+
+ingress:
+  enabled: true
+  className: alb
+  # Set this once DNS exists. Empty serves on the ALB's own address, which is
+  # what you want for a first deploy.
+  host: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Pairs with the ClusterIP Service above: the controller registers pod IPs
+    # directly as targets. "instance" would require a NodePort Service.
+    alb.ingress.kubernetes.io/target-type: ip
+    # Without this the ALB health-checks "/", which renders the full product
+    # grid and calls the catalog service on every check. /health is a flat
+    # JSON response that touches nothing downstream.
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    # Uncomment to restrict who can reach the ALB. This is the replacement for
+    # frontend.service.loadBalancerSourceRanges, which has no effect on a
+    # ClusterIP Service. Note that /admin needs no credentials, so an
+    # unrestricted ALB means anyone who finds the address can add products and
+    # rewrite stock levels.
+    # alb.ingress.kubernetes.io/inbound-cidrs: 203.0.113.0/24

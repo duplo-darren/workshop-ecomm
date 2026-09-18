@@ -331,11 +331,49 @@ inventory:
   tolerations: []
   affinity: {}
 
-# -- Ingress for the frontend only; catalog and inventory stay internal.
+# ---------------------------------------------------------------------------
+# Ingress for the frontend only; catalog and inventory stay internal.
+#
+# Enabling this does NOT turn the NLB off. frontend.service.type stays
+# LoadBalancer unless you change it too, so ingress.enabled=true on its own
+# provisions an ALB *and* an NLB — two load balancers to pay for, and the NLB
+# keeps a public address of its own that bypasses the Ingress entirely. Set
+# frontend.service.type=ClusterIP in the same command. The NLB annotations
+# above are conditioned on the LoadBalancer type, so they drop away by
+# themselves once you do.
+#
+# frontend.service.loadBalancerSourceRanges also stops having any effect on a
+# ClusterIP Service. The ALB equivalent is the inbound-cidrs annotation below.
+#
+# values-alb.yaml in this directory is a ready-made overlay of all of it.
+# ---------------------------------------------------------------------------
 ingress:
   enabled: false
+  # -- IngressClass that should claim this Ingress: "alb" for the AWS Load
+  # Balancer Controller, "nginx" for ingress-nginx. Leaving it empty omits
+  # ingressClassName altogether, which falls back to whichever IngressClass is
+  # marked as the cluster default — on most EKS clusters there is none, and the
+  # Ingress then sits with no ADDRESS and no events saying why.
   className: ""
+  # -- Controller-specific configuration; empty by default because the right
+  # keys depend on which controller you run. For an ALB:
+  #
+  #   alb.ingress.kubernetes.io/scheme: internet-facing
+  #   # "ip" is what pairs with a ClusterIP Service. The "instance" target type
+  #   # needs a NodePort Service instead.
+  #   alb.ingress.kubernetes.io/target-type: ip
+  #   # Health-check /health, not the default "/", which renders the whole
+  #   # product grid and calls the catalog service on every check.
+  #   alb.ingress.kubernetes.io/healthcheck-path: /health
+  #   alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+  #   # Stands in for loadBalancerSourceRanges. Leave it out and the ALB — and
+  #   # so the unauthenticated /admin page — is open to the internet.
+  #   alb.ingress.kubernetes.io/inbound-cidrs: 203.0.113.0/24
+  #
+  # For ingress-nginx, className: nginx on its own is usually enough.
   annotations: {}
+  # -- Hostname to match on. Empty serves on the load balancer's own address,
+  # which is what you want before any DNS exists.
   host: ""
   path: /
   pathType: Prefix
